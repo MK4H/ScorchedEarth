@@ -1,0 +1,124 @@
+<ValueItem>:
+    orientation: 'vertical'
+    BoxLayout:
+        orientation: 'horizontal'
+        Label:
+            text: self.parent.parent.label
+        TextInput:
+            multiline: False
+            input_filter: 'float'
+            text: "{:.2f}".format(self.parent.parent.value)
+            on_text_validate: self.parent.parent.value = max(min(float(self.text), self.parent.parent.max), self.parent.parent.min)
+    Slider:
+        value: self.parent.value if not self.parent.reverse else (self.max - self.parent.value + self.min )
+        max: self.parent.max
+        min: self.parent.min
+        on_value: self.parent.value = (self.value if not self.parent.reverse else (self.max - self.value + self.min))
+
+<Shell>:
+    source: 'shell.png'
+    size_hint: (0.05, 0.025)
+    canvas.before:
+        PushMatrix
+        Rotate:
+            angle: self.angle
+            origin: self.center
+    canvas:
+        Color:
+            rgba: 0, 1, 0, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    canvas.after:
+        PopMatrix
+
+
+<GunBarrel>:
+    source: 'gunbarrel.png'
+    size_hint: self.b_size
+    pos_hint: {'x': 0.5, 'center_y':0.5}
+    canvas.before:
+        PushMatrix
+        Rotate:
+            angle: self.angle
+            origin: (self.x, self.center_y)
+    canvas.after:
+        PopMatrix
+
+<TankBody>:
+    source: 'tank.png'
+    size_hint: (0.5, 0.5)
+    pos_hint: {'center_x': 0.5, 'center_y':0.5}
+
+<Tank>:
+    body: body
+    barrel: barrel
+    size: (100, 100)
+    size_hint: (None, None)
+    canvas:
+        Color:
+            rgba: 0, 0, 1, 1
+        Rectangle:
+            size: self.size
+    TankBody:
+        id: body
+    GunBarrel:
+        id: barrel
+
+
+<Map>
+    trace_display: trace_display
+    canvas.before:
+        Rectangle:
+            texture: self.foreground_image.texture
+            pos: self.pos
+            size: self.size
+    TraceDisplay:
+        id: trace_display
+        size_hint: (1.0,1.0)
+<Game>
+    map: map
+    power_in: power_in
+    angle_in: angle_in
+    wind_out: wind_out
+    player_out: player_out
+    fire_button: fire_button
+    ActionBar:
+        pos_hint: {'top': 1}
+        size_hint: (1, 0.1)
+        ActionView:
+            use_separator: True
+            ActionPrevious:
+                title: 'Reset'
+                with_previous: True
+            ActionOverflow:
+            ValueItem:
+                id: power_in
+                label: 'Power'
+                max: 100
+                min: 1
+                reverse: False
+            ValueItem:
+                id: angle_in
+                label: 'Angle'
+                max: 270
+                min: -90
+                reverse: True
+            ActionButton:
+                id: fire_button
+                text: 'Fire!'
+            TextItem:
+                id: wind_out
+                text: 'No wind'
+            TextItem:
+                id: player_out
+                text: 'No player'
+    Map:
+        id: map
+        size_hint: (1, 0.9)
+
+<Menu>:
+    Button:
+        size_hint: (1,1)
+        text: 'Start game'
+        on_press: self.parent.start_game()
