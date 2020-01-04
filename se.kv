@@ -11,7 +11,7 @@
             multiline: False
             input_filter: 'float'
             text: "{:.2f}".format(self.parent.parent.value + self.parent.parent.value_offset)
-            on_text_validate: self.parent.parent.value = max(min(float(self.text), self.parent.parent.max), self.parent.parent.min) - self.parent.parent.value_offset
+            on_text_validate: self.parent.parent.value = max(min(float(self.text) - self.parent.parent.value_offset, self.parent.parent.max), self.parent.parent.min)
     Slider:
         id: slide_in
         value: self.parent.value if not self.parent.reverse else (self.max - self.parent.value + self.min )
