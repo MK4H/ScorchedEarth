@@ -5,19 +5,19 @@
     BoxLayout:
         orientation: 'horizontal'
         Label:
-            text: self.parent.parent.label
+            text: root.label
         TextInput:
             id: text_in
             multiline: False
             input_filter: 'float'
-            text: "{:.2f}".format(self.parent.parent.value + self.parent.parent.value_offset)
-            on_text_validate: self.parent.parent.value = max(min(float(self.text) - self.parent.parent.value_offset, self.parent.parent.max), self.parent.parent.min)
+            text: "{:.2f}".format(root.value + root.value_offset)
+            on_text_validate: root.value = max(min(float(self.text) - root.value_offset, root.max), root.min)
     Slider:
         id: slide_in
-        value: self.parent.value if not self.parent.reverse else (self.max - self.parent.value + self.min )
-        max: self.parent.max
-        min: self.parent.min
-        on_value: self.parent.value = (self.value if not self.parent.reverse else (self.max - self.value + self.min))
+        value: root.value if not root.reverse else (self.max - root.value + self.min )
+        max: root.max
+        min: root.min
+        on_value: root.value = (self.value if not root.reverse else (self.max - self.value + self.min))
 
 <Shell>:
     source: 'shell.png'
@@ -59,14 +59,18 @@
     GunBarrel:
         id: barrel
 
+<Terrain>:
 
 <Map>
     trace_display: trace_display
-    canvas.before:
-        Rectangle:
-            texture: self.foreground_image.texture
-            pos: self.pos
-            size: self.size
+    terrain: terrain
+    Terrain:
+        id: terrain
+        canvas:
+            Rectangle:
+                texture: self.background_image.texture
+                pos: self.pos
+                size: self.size
     TraceDisplay:
         id: trace_display
         size_hint: (1.0,1.0)
@@ -86,8 +90,9 @@
             ActionView:
                 use_separator: True
                 ActionPrevious:
-                    title: 'Reset'
-                    with_previous: True
+                    title: ''
+                    with_previous: False
+                    app_icon: 'tank_icon.png'
                 ActionOverflow:
                 ValueItem:
                     id: power_in
@@ -121,8 +126,97 @@
                 pos_hint: {'center_x' : 0.5, 'center_y' : 0.5}
                 size: (1000, 1000)
 
+<MenuValueItem>:
+    size_hint: (1, None)
+    size: (0,40)
+    orientation: 'horizontal'
+    text_in: text_in
+    slide_in: slide_in
+    Label:
+        text: self.parent.label
+    TextInput:
+        id: text_in
+        multiline: False
+        halign: 'center'
+        input_filter: self.parent.input_filter
+        text: "{:.2f}".format(self.parent.value) if self.parent.input_filter == 'float' else "{:d}".format(self.parent.value)
+        on_text_validate: self.parent.value = max(min(float(self.text), self.parent.max), self.parent.min)
+    Slider:
+        id: slide_in
+        value: self.parent.value
+        max: self.parent.max
+        min: self.parent.min
+        step: self.parent.step
+        on_value: self.parent.value = self.value
+
+
 <Menu>:
-    Button:
-        size_hint: (1,1)
-        text: 'Start game'
-        on_press: self.parent.start_game()
+    num_players: num_players
+    gravity: gravity
+    drag: drag
+    shell_vel: shell_vel
+    wind: wind
+    explosion_r: explosion_r
+    shell_mass: shell_mass
+    BoxLayout:
+        orientation: 'vertical'
+        Button:
+            size_hint: (1,1)
+            text: 'Start game'
+            on_press: self.parent.parent.start_game()
+        MenuValueItem:
+            id: num_players
+            input_filter: 'int'
+            step: 1
+            value: 2
+            label: 'Number of players:'
+            max: 8
+            min: 2
+        MenuValueItem:
+            id: gravity
+            input_filter: 'float'
+            value: 1
+            step: 0
+            label: 'Gravity:'
+            max: 10
+            min: 0.1
+        MenuValueItem:
+            id: shell_vel
+            input_filter: 'float'
+            value: 1
+            step: 0
+            label: 'Max shell muzzle velocity:'
+            max: 10
+            min: 0.1
+        MenuValueItem:
+            id: drag
+            input_filter: 'float'
+            value: 1
+            step: 0
+            label: 'Drag:'
+            max: 10
+            min: 0
+        MenuValueItem:
+            id: wind
+            input_filter: 'float'
+            value: 1
+            step: 0
+            label: 'Max wind strength:'
+            max: 10
+            min: 0
+        MenuValueItem:
+            id: explosion_r
+            input_filter: 'int'
+            value: 50
+            step: 1
+            label: 'Shell explosion radius:'
+            max: 200
+            min: 0
+        MenuValueItem:
+            id: shell_mass
+            input_filter: 'float'
+            value: 1
+            label: 'Shell mass:'
+            max: 10
+            min: 0.1
+
