@@ -93,6 +93,7 @@
                     title: ''
                     with_previous: False
                     app_icon: 'tank_icon.png'
+                    on_press: root.exit_to_menu()
                 ActionOverflow:
                 ValueItem:
                     id: power_in
@@ -133,21 +134,21 @@
     text_in: text_in
     slide_in: slide_in
     Label:
-        text: self.parent.label
+        text: root.label
     TextInput:
         id: text_in
         multiline: False
         halign: 'center'
-        input_filter: self.parent.input_filter
-        text: "{:.2f}".format(self.parent.value) if self.parent.input_filter == 'float' else "{:d}".format(self.parent.value)
-        on_text_validate: self.parent.value = max(min(float(self.text), self.parent.max), self.parent.min)
+        input_filter: root.input_filter
+        text: "{:.2f}".format(root.value) if root.input_filter == 'float' else "{:d}".format(root.value)
+        on_text_validate: root.value = max(min(float(self.text), root.max), root.min)
     Slider:
         id: slide_in
-        value: self.parent.value
-        max: self.parent.max
-        min: self.parent.min
-        step: self.parent.step
-        on_value: self.parent.value = self.value
+        value: root.value
+        max: root.max
+        min: root.min
+        step: root.step
+        on_value: root.value = self.value
 
 
 <Menu>:
@@ -163,7 +164,7 @@
         Button:
             size_hint: (1,1)
             text: 'Start game'
-            on_press: self.parent.parent.start_game()
+            on_press: root.start_game()
         MenuValueItem:
             id: num_players
             input_filter: 'int'
@@ -199,10 +200,10 @@
         MenuValueItem:
             id: wind
             input_filter: 'float'
-            value: 1
+            value: 100
             step: 0
             label: 'Max wind strength:'
-            max: 10
+            max: 999
             min: 0
         MenuValueItem:
             id: explosion_r
@@ -220,3 +221,33 @@
             max: 10
             min: 0.1
 
+<VictoryEntry>:
+    Label:
+        size_hint: (0.2, 1)
+        text: str(root.number)
+    Label:
+        size_hint: (0.6,1)
+        text: root.name
+    Label:
+        size_hint: (0.2, 1)
+        text: str(root.score)
+
+<VictoryInput>:
+    Label:
+        size_hint: (0.2, 1)
+        text: str(root.number)
+    TextInput:
+        size_hint: (0.6,1)
+        text: 'anonymous'
+        text_hint: 'enter your name'
+        multiline: False
+        on_text: root.name = self.text
+    Label:
+        size_hint: (0.2, 1)
+        text: str(root.score)
+
+<Victory>:
+    contents: contents
+    BoxLayout:
+        id: contents
+        orientation: 'vertical'

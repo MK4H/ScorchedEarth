@@ -5,8 +5,10 @@ from kivy.clock import Clock
 from kivy.graphics.context_instructions import Color
 from kivy.graphics.vertex_instructions import Point, Line, Rectangle
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
 from kivy.uix.image import Image
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
@@ -18,16 +20,19 @@ from kivy.uix.actionbar import ActionItem
 from kivy.core.window import Window
 from collections import deque
 from random import random, randrange
+from terrain_generation import generate_terrain
 import collisions
+import json
 
 MAX_MUZZLE_SHELL_VEL = 750
 SHELL_MASS = 100
 GRAVITY = 200
 DRAG_COEFFICIENT = 0.0025
-MAX_WIND = 1
+MAX_WIND = 10
 INIT_ANGLE = 90
 INIT_POWER = 50
 DEFAULT_SHELL_EXPLOSION_RADIUS = 50
+TANK_BODY_SIZE = (25, 25)
 
 Window.minimum_width = 800
 Window.minimum_height = 600
@@ -44,9 +49,6 @@ def get_wind_text(wind):
         return f"< {-wind:3.2f}"
     else:
         return 'NO WIND'
-
-
-
 
 class MenuValueItem(BoxLayout):
     input_filter = OptionProperty('float', options=['int', 'float'])
@@ -92,8 +94,9 @@ class Shell(Image):
     velocity_y = NumericProperty(0)
     velocity = ReferenceListProperty(velocity_x, velocity_y)
 
-    def __init__(self, power, angle, start_vel, mass, gravity, wind, drag_coef, explosion_radius, **kwargs):
+    def __init__(self, player, power, angle, start_vel, mass, gravity, wind, drag_coef, explosion_radius, **kwargs):
         super().__init__(**kwargs)
+        self.player = player
         self.init_power = power
         self.init_angle = angle
         self.mass = mass
@@ -108,7 +111,7 @@ class Shell(Image):
         self.center = Vector(*self.center) + Vector(*self.velocity) * dt
         self.velocity_y -= self.gravity * dt
 
-        air_vel = Vector(self.velocity_x + self.wind, self.velocity_y)
+        air_vel = Vector(self.velocity_x - self.wind, self.velocity_y)
 
         # based on https://en.wikipedia.org/wiki/Drag_equation
         # hides the density, area and other constants for the shell into the drag coefficient
@@ -141,6 +144,9 @@ class GunBarrel(Image):
     b_width = NumericProperty(0.2)
     b_size = ReferenceListProperty(b_length, b_width)
 
+    def get_shell_size(self):
+        return self.size[1], self.size[1] / 2
+
 
 class TankBody(Image):
     pass
@@ -150,11 +156,12 @@ class Tank(RelativeLayout):
     body = ObjectProperty(None)
     barrel = ObjectProperty(None)
 
-    def __init__(self, color, barrel_angle, **kwargs):
+    def __init__(self, color, barrel_angle, body_size, **kwargs):
         super().__init__(**kwargs)
         self.body.color = color
         self.barrel.color = color
         self.barrel.angle = barrel_angle
+        self.size = (2*body_size[0], 2*body_size[1])
 
     def get_muzzle_pos(self, shell_length):
         rel_pos = Vector(self.barrel.b_length * self.width + shell_length / 2, 0).rotate(self.barrel.angle)
@@ -173,6 +180,9 @@ class Tank(RelativeLayout):
         shell_rect = shell.get_rectangle()
         return shell_rect.collide_rectangle(body_rect) or shell_rect.collide_rectangle(barrel_rect)
 
+    def set_position(self, pos):
+        self.pos = (pos[0] - self.size[0] / 4, pos[1] - self.size[1] / 4)
+
 
 class Player:
     MAX_TRACES = 10
@@ -182,6 +192,8 @@ class Player:
         self.color = color
         self.tank = None
         self.traces = deque([], self.MAX_TRACES)
+        self.kills = 0
+        self.shots = 0
 
     def add_trace(self, trace):
         self.traces.append(trace)
@@ -191,6 +203,13 @@ class Player:
 
     def collide_with(self, shell):
         return self.tank.collide_with(shell)
+
+    def reset(self):
+        self.traces = deque([], self.MAX_TRACES)
+        self.tank = None
+        self.kills = 0
+        self.shots = 0
+
 
 
 player_list = [
@@ -348,35 +367,6 @@ class Terrain(Image):
                     n_trans = [c_y[2], c_y[1]]
                     transitions[i*2 + 1 : i*2 + 1] = n_trans
 
-
-def generate_terrain(map_size, tank_x_positions, tank_size):
-    solid_parts = []
-    prev_height = randrange(map_size[1])
-    s_t_p = sorted(tank_x_positions, reverse=True)
-    next_x_pos = s_t_p.pop()
-    tank_positions = []
-
-    for x in range(map_size[0]):
-        if x < next_x_pos:
-            terrain_top = randrange(max(prev_height - 2, 1), min(prev_height + 2, map_size[1]))
-        elif next_x_pos == x:
-            terrain_top = randrange(max(prev_height - 2, 1), min(prev_height + 2, map_size[1]))
-            tank_positions.append(Vector(x, terrain_top))
-        elif next_x_pos < x < next_x_pos + tank_size - 1:
-            terrain_top = prev_height
-        else:
-            terrain_top = prev_height
-            if len(s_t_p) != 0:
-                next_x_pos = s_t_p.pop()
-            else:
-                next_x_pos = map_size[0] + 1
-
-        solid_parts.append([0, terrain_top])
-        prev_height = terrain_top
-
-    return solid_parts, tank_positions
-
-
 class Map(RelativeLayout):
     terrain = ObjectProperty(None)
     trace_display = ObjectProperty(None)
@@ -414,6 +404,7 @@ class Game(Screen):
         self.shell = None
         self.wind = None
         self.update_event = None
+        self.init_player_count = 0
         self.players = []
         self.c_player_idx = 0
         self.angle_in.bind(value=self.on_angle_input)
@@ -425,51 +416,102 @@ class Game(Screen):
         self.explosion_radius = DEFAULT_SHELL_EXPLOSION_RADIUS
         self.shell_mass = SHELL_MASS
 
-    def on_pre_enter(self, *args):
-        tank_x_pos = []
-        avg_tank_dist = self.map.size[0] / len(self.players)
-        for i in range(len(self.players)):
-            tank_x_pos.append(avg_tank_dist / 2 + i * avg_tank_dist + randrange(math.ceil(-avg_tank_dist/4), math.floor(avg_tank_dist/4)))
+    def reset(self):
+        self.tracer = None
+        self.shell = None
+        self.wind = None
+        self.update_event = None
+        self.init_player_count = 0
+        self.players = []
+        self.c_player_idx = 0
+        self.max_wind = MAX_WIND
+        self.gravity = GRAVITY
+        self.max_muzzle_shell_vel = MAX_MUZZLE_SHELL_VEL
+        self.drag_coef = DRAG_COEFFICIENT
+        self.explosion_radius = DEFAULT_SHELL_EXPLOSION_RADIUS
+        self.shell_mass = SHELL_MASS
+        self.enable_input()
 
-        # TODO: proper tank size
-        self.map.terrain.solid_parts, tank_pos = generate_terrain(self.map.size, tank_x_pos, 100)
+    def on_pre_enter(self, *args):
+        self.init_player_count = len(self.players)
+        tank_x_pos = []
+        avg_tank_dist = math.floor(self.map.size[0] / (len(self.players) + 1))
+        for i in range(len(self.players)):
+            tank_x_pos.append((i + 1) * avg_tank_dist + randrange(math.ceil(-avg_tank_dist/4), math.floor(avg_tank_dist/4)))
+
+        SPACE_AROUND = 4
+        self.map.terrain.solid_parts, tank_pos = generate_terrain(self.map.size, tank_x_pos, (TANK_BODY_SIZE[0] + SPACE_AROUND, TANK_BODY_SIZE[1]))
         for idx, player in enumerate(self.players):
-            tank = Tank(player.color, INIT_ANGLE)
+            tank = Tank(player.color, INIT_ANGLE, TANK_BODY_SIZE)
             self.map.add_widget(tank)
             player.set_tank(tank)
-            tank.pos = tank_pos[idx]
+            tank.set_position((tank_pos[idx][0] + SPACE_AROUND/2, tank_pos[idx][1]))
 
-        self.c_player_idx = len(self.players) + 1
+        self.c_player_idx = randrange(len(self.players))
         self.switch_player()
         self.map.redraw()
         self.update_event = Clock.schedule_interval(self.update, self.FRAME_RATE)
 
     def end(self):
         self.update_event.cancel()
+        if self.tracer is not None:
+            self.tracer.end()
+
+        if self.shell is not None:
+            self.map.remove_widget(self.shell)
+
+        for player in self.players.copy():
+            self.remove_player(player)
+
+        self.map.trace_display.clear()
+        self.reset()
+
+    def exit_to_menu(self):
+        self.end()
+        self.manager.current = 'menu'
+
+    def victory(self, player_count, player):
+        victory = self.manager.get_screen('victory')
+        victory.player_count = player_count
+        victory.player = player
+        victory.kills = player.kills
+        victory.shots = player.shots
+
+        self.end()
+        self.manager.current = 'victory'
 
     def update(self, dt):
         if self.shell is not None:
             self.shell.update(dt)
-            if self.check_collisions(self.shell):
-                self.tracer.end()
-                self.get_c_player().add_trace(Trace(self.shell.init_power,
-                                                    self.shell.init_angle,
-                                                    self.shell.wind,
-                                                    self.tracer.trace_points))
-                self.map.remove_widget(self.shell)
-                self.tracer = None
-                self.shell = None
-                self.switch_player()
+            collided, player = self.check_collisions(self.shell)
+            if not collided:
+                return
+
+            if len(self.players) == 1:
+                self.victory(self.init_player_count, self.players[0])
+                return
+
+            self.tracer.end()
+            if player is not self.shell.player:
+                self.shell.player.add_trace(Trace(self.shell.init_power,
+                                                  self.shell.init_angle,
+                                                  self.shell.wind,
+                                                  self.tracer.trace_points))
+            self.map.remove_widget(self.shell)
+            self.tracer = None
+            self.shell = None
+            self.switch_player()
 
     def check_collisions(self, shell):
         player = self.collide_players(shell)
         if player is not None:
-            player.tank.body.color = (0, 0, 0, 1)
-            return True
+            self.get_c_player().kills += 1
+            self.remove_player(player)
+            return True, player
         if self.map.terrain_collision(shell):
             self.map.redraw()
-            return True
-        return False
+            return True, None
+        return False, None
 
     def switch_player(self):
         self.c_player_idx = (self.c_player_idx + 1) % len(self.players)
@@ -503,7 +545,9 @@ class Game(Screen):
         self.power_in.value = power
 
     def shoot(self, player, power, angle):
-        self.shell = Shell(power,
+        player.shots += 1
+        self.shell = Shell(player,
+                           power,
                            angle,
                            self.max_muzzle_shell_vel * power/100,
                            self.shell_mass,
@@ -511,7 +555,7 @@ class Game(Screen):
                            self.wind,
                            self.drag_coef,
                            self.explosion_radius)
-
+        self.shell.size = player.tank.barrel.get_shell_size()
         self.map.add_widget(self.shell, canvas='after')
         # update the size of the shell based on the map size
         self.map.do_layout()
@@ -536,6 +580,14 @@ class Game(Screen):
 
     def get_c_player(self):
         return self.players[self.c_player_idx]
+
+    def remove_player(self, player):
+        idx = self.players.index(player)
+        if idx <= self.c_player_idx:
+            self.c_player_idx -= 1
+        self.map.remove_widget(player.tank)
+        del self.players[idx]
+        player.reset()
 
     def generate_wind(self):
         return (random() - 0.5) * self.max_wind
@@ -574,11 +626,116 @@ class Menu(Screen):
         game.gravity = GRAVITY * self.gravity.value
         game.max_muzzle_shell_vel = MAX_MUZZLE_SHELL_VEL * self.shell_vel.value
         game.drag_coef = DRAG_COEFFICIENT * self.drag.value
-        game.max_wind = MAX_WIND * self.wind.value
+        game.max_wind = self.wind.value
         game.explosion_radius = self.explosion_r.value
         game.shell_mass = SHELL_MASS * self.shell_mass.value
 
         self.manager.current = 'game'
+
+
+class VictoryEntry(BoxLayout):
+    number = NumericProperty(0)
+    name = StringProperty('---')
+    score = NumericProperty(0)
+
+
+class VictoryInput(BoxLayout):
+    number = NumericProperty(0)
+    name = StringProperty('anonymous')
+    score = NumericProperty(0)
+
+
+class Victory(Screen):
+    contents = ObjectProperty(None)
+    show_scores = 10
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.entries = None
+        self.leaderboards = None
+
+    def on_pre_enter(self, *args):
+        self.contents.add_widget(Label(text="Loading leaderboard."))
+        # TODO: async loading
+
+        try:
+            with open('leaderboards.json', 'r', encoding='utf-8') as json_file:
+                self.leaderboards = json.load(json_file)
+        except IOError:
+            # TODO: Handle failed JSON parsing
+            self.leaderboards = self.create_leaderboards()
+
+        self.display()
+
+    def display(self):
+        self.contents.clear_widgets()
+        self.contents.add_widget(Label(text=f"Leaderboard for {self.player_count:d} players", size_hint=(1, 2/(3 + self.show_scores))))
+        leaderboard = self.leaderboards[str(self.player_count)]
+
+        self.entries = []
+        placed = False
+        for idx, result in enumerate(leaderboard):
+            score = result['score']
+            if not placed and score < self.get_score():
+                entry = VictoryInput(number=idx + 1, score=self.get_score(), size_hint=(1, 1/(3 + self.show_scores)))
+                self.entries.append(entry)
+                self.contents.add_widget(entry)
+                placed = True
+            number = idx + 1 if not placed else idx + 2
+            if number <= self.show_scores:
+                entry = VictoryEntry(number=number, name=result['name'], score=score, size_hint=(1, 1/(3 + self.show_scores)))
+                self.entries.append(entry)
+                self.contents.add_widget(entry)
+
+        btn = Button(text="Main menu", size_hint=(1, 1 / (3 + self.show_scores)))
+        self.contents.add_widget(btn)
+        btn.bind(on_press=self.exit)
+
+    def exit(self, instance):
+        leaderboard = []
+        for entry in self.entries:
+            leaderboard.append({'name': entry.name, 'score': entry.score})
+
+        self.leaderboards[self.player_count] = leaderboard
+        try:
+            with open('leaderboards.json', 'w+', encoding='utf-8') as json_file:
+                json.dump(self.leaderboards, json_file)
+        except IOError:
+            popup = Popup(title='Error',
+                          content=Label(text='Could not save leaderboard.'),
+                          size_hint=(None, None), size=(400, 400))
+            popup.bind(on_dismiss=self.switch_to_main_menu)
+            popup.open()
+            return
+
+        self.switch_to_main_menu()
+
+    def create_leaderboards(self):
+        new_leaderboards = {}
+
+        for num_players in range(2, 11):
+            players = []
+            for player in range(10):
+                players.append({
+                    "name": "---",
+                    "score": 0
+                })
+            new_leaderboards[str(num_players)] = players
+
+        return new_leaderboards
+
+    def switch_to_main_menu(self):
+        self.contents.clear_widgets()
+        self.entries = None
+        self.leaderboards = None
+
+        self.manager.current = 'menu'
+
+    def get_score(self):
+        if self.shots != 0:
+            return self.kills/self.shots
+        else:
+            return 0
 
 
 class SEApp(App):
@@ -586,6 +743,7 @@ class SEApp(App):
         sm = ScreenManager()
         sm.add_widget(Menu(name='menu'))
         sm.add_widget(Game(name='game'))
+        sm.add_widget(Victory(name='victory'))
         return sm
 
 
