@@ -81,9 +81,11 @@
     wind_out: wind_out
     player_out: player_out
     fire_button: fire_button
+    act_bar: act_bar
     BoxLayout:
         orientation: 'vertical'
         ActionBar:
+            id: act_bar
             pos_hint: {'top': 1}
             size_hint: (1, None)
             size: (0, 70)
@@ -150,15 +152,36 @@
         step: root.step
         on_value: root.value = self.value
 
+<MenuPercentItem>:
+    size_hint: (1, None)
+    size: (0,40)
+    orientation: 'horizontal'
+    text_in: text_in
+    slide_in: slide_in
+    Label:
+        text: root.label
+    TextInput:
+        id: text_in
+        multiline: False
+        halign: 'center'
+        input_filter: 'float'
+        text: "{:.2f}".format(root.value)
+        on_text_validate: root.value = max(min(float(self.text), root.max), root.min)
+    Slider:
+        id: slide_in
+        value: root.normalized_value
+        max: 1
+        min: 0
+        on_value: root.normalized_value = self.value
 
 <Menu>:
     num_players: num_players
-    gravity: gravity
-    drag: drag
-    shell_vel: shell_vel
+    gravity_perc: gravity
+    drag_perc: drag
+    shell_vel_perc: shell_vel
     wind: wind
     explosion_r: explosion_r
-    shell_mass: shell_mass
+    shell_mass_perc: shell_mass
     BoxLayout:
         orientation: 'vertical'
         Button:
@@ -173,29 +196,24 @@
             label: 'Number of players:'
             max: 8
             min: 2
-        MenuValueItem:
+        MenuPercentItem:
             id: gravity
-            input_filter: 'float'
-            value: 1
+            value: 100
             step: 0
-            label: 'Gravity:'
-            max: 10
-            min: 0.1
-        MenuValueItem:
+            label: 'Gravity (%):'
+            max: 1000
+            min: 10
+        MenuPercentItem:
             id: shell_vel
-            input_filter: 'float'
-            value: 1
-            step: 0
-            label: 'Max shell muzzle velocity:'
-            max: 10
-            min: 0.1
-        MenuValueItem:
+            value: 100
+            label: 'Max shell muzzle velocity (%):'
+            max: 1000
+            min: 10
+        MenuPercentItem:
             id: drag
-            input_filter: 'float'
-            value: 1
-            step: 0
-            label: 'Drag:'
-            max: 10
+            value: 100
+            label: 'Drag (%):'
+            max: 1000
             min: 0
         MenuValueItem:
             id: wind
@@ -213,13 +231,12 @@
             label: 'Shell explosion radius:'
             max: 200
             min: 0
-        MenuValueItem:
+        MenuPercentItem:
             id: shell_mass
-            input_filter: 'float'
-            value: 1
-            label: 'Shell mass:'
-            max: 10
-            min: 0.1
+            value: 100
+            label: 'Shell mass (%):'
+            max: 1000
+            min: 10
 
 <VictoryEntry>:
     Label:
